@@ -56,6 +56,26 @@
 #   define USBASPUART_RXEN      RXEN0
 #   define USBASPUART_TXEN      TXEN0
 
+#elif defined __AVR_ATmega32U4__
+
+#   define USBASPUART_UDR       UDR1
+#   define USBASPUART_UDRIE     UDRIE1
+#   define USBASPUART_UCSRA     UCSR1A
+#   define USBASPUART_UCSRB     UCSR1B
+#   define USBASPUART_UCSRC     UCSR1C
+#   define USBASPUART_U2X       U2X1
+#   define USBASPUART_UCSZ0     UCSZ10
+#   define USBASPUART_UCSZ1     UCSZ11
+#   define USBASPUART_UCSZ2     UCSZ12
+#   define USBASPUART_UPM0      UPM10
+#   define USBASPUART_UPM1      UPM11
+#   define USBASPUART_USBS      USBS1
+#   define USBASPUART_UBRRL     UBRR1L
+#   define USBASPUART_UBRRH     UBRR1H
+#   define USBASPUART_RXCIE     RXCIE1
+#   define USBASPUART_RXEN      RXEN1
+#   define USBASPUART_TXEN      TXEN1
+
 #endif    
 
 #define rx_Q_SIZE   128

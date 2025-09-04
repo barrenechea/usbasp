@@ -4,15 +4,32 @@
 #   20061120   Hanns-Konrad Unger   help: and TARGET=atmega48 added
 #
 
+# Legacy VUSB targets:
 # TARGET=atmega8    HFUSE=0xc9  LFUSE=0xef
 # TARGET=atmega48   HFUSE=0xdd  LFUSE=0xff
-# TARGET=at90s2313
+# TARGET=atmega88   HFUSE=0xdd  LFUSE=0xff
+
+# New LUFA target:
+# TARGET=atmega32u4 (uses LUFA, no external crystal needed)
+
 TARGET ?= atmega8
 # TARGET ?= atmega88
-# C9 DF = full swing xtal, 4ms SUT
-HFUSE=0xC9
-LFUSE=0xDF
-CLOCK=12000000
+# TARGET ?= atmega32u4
+
+# Detect if using LUFA (ATmega32U4) or VUSB (other targets)
+ifeq ($(TARGET),atmega32u4)
+  USE_LUFA = 1
+  HFUSE = 0xD8
+  LFUSE = 0xFF
+  CLOCK = 16000000
+else
+  USE_LUFA = 0
+  # C9 DF = full swing xtal, 4ms SUT
+  HFUSE=0xC9
+  LFUSE=0xDF
+  CLOCK=12000000
+endif
+
 TPI=
 HIDUART=
 
@@ -36,16 +53,26 @@ help:
 	@echo "       LFUSE=${LFUSE}"
 	@echo "       HFUSE=${HFUSE}"
 	@echo "       CLOCK=${CLOCK}"
-	@echo "       TPI=$(if ifeq (${TPI},),Off,On)"
-	@echo "       HIDUART=$(if ifeq (${HIDUART},),Off,On)"
+	@echo "       TPI=$(if $(TPI),On,Off)"
+	@echo "       HIDUART=$(if $(HIDUART),On,Off)"
 	@echo "       ISP=${ISP}"
 	@echo "       PORT=${PORT}"
+	@echo "       USE_LUFA=$(USE_LUFA)"
 
 # Base compile flags
 COMPILE = avr-gcc -Wall -Wextra -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Os -I. -mmcu=$(TARGET) -DF_CPU=$(CLOCK) # -DDEBUG_LEVEL=1
 
-# Add VUSB-specific flags
-COMPILE += -DUSE_VUSB -Iusbdrv
+# Add USB library specific flags
+ifeq ($(USE_LUFA),1)
+  COMPILE += -DUSE_LUFA -DUSE_LUFA_CONFIG_HEADER -DF_USB=$(CLOCK) -Ilufa/LUFA -IConfig/
+  LUFA_PATH = lufa/LUFA
+  ARCH = AVR8
+  F_USB = $(CLOCK)
+  OPTIMIZATION = s
+  include $(LUFA_PATH)/Build/LUFA/lufa-sources.mk
+else
+  COMPILE += -DUSE_VUSB -Iusbdrv
+endif
 
 # Base objects (core functionality)
 BASE_OBJECTS = isp.o clock.o
@@ -53,24 +80,25 @@ BASE_OBJECTS = isp.o clock.o
 # USB abstraction layer objects
 USB_INTERFACE_OBJECTS = usb_interface.o
 
-# USB implementation specific objects  
+# USB implementation specific objects
 ifeq ($(USE_LUFA),1)
-  USB_IMPL_OBJECTS = usb_lufa_impl.o usb_descriptors_lufa.o $(LUFA_SRC_USB:.c=.o) usbasp_debug_lufa.o
+  USB_IMPL_OBJECTS = usb_lufa_impl.o usb_descriptors_lufa.o $(LUFA_SRC_USB:.c=.o)
 else
-  USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o usbasp_debug_vusb.o
+  USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
 endif
 
-# Modular architecture objects
-OBJECTS = $(BASE_OBJECTS) $(USB_INTERFACE_OBJECTS) $(USB_IMPL_OBJECTS) main.o
+# Modular architecture objects (now uses main.o directly)
+MODULAR_OBJECTS = $(BASE_OBJECTS) $(USB_INTERFACE_OBJECTS) $(USB_IMPL_OBJECTS) main.o
 
+# Add optional feature objects
 ifneq ($(TPI),)
 COMPILE += -D__TPI__
-OBJECTS += tpi.o
+MODULAR_OBJECTS += tpi.o
 endif
 
 ifneq ($(HIDUART),)
 COMPILE += -D__HIDUART__
-OBJECTS += uart.o serialnumber.o
+MODULAR_OBJECTS += uart.o serialnumber.o
 endif
 
 .c.o:
@@ -90,9 +118,9 @@ endif
 clean:
 	rm -f main.hex main.lst main.obj main.cof main.list main.map main.eep.hex main.bin *.o main.s usbdrv/*.o
 
-# file targets:
-main.bin:	$(OBJECTS)
-	$(COMPILE) -o main.bin $(OBJECTS) -Wl,-Map,main.map
+# Build targets
+main.bin: $(MODULAR_OBJECTS)
+	$(COMPILE) -o main.bin $(MODULAR_OBJECTS) -Wl,-Map,main.map
 
 main.hex:	main.bin
 	rm -f main.hex main.eep.hex
@@ -108,7 +136,7 @@ disasm:	main.bin
 cpp:
 	$(COMPILE) -E main.c
 
-flash:
+flash: main.hex
 	avrdude -c ${ISP} -p ${TARGET} -P ${PORT} -U flash:w:main.hex:i -U eeprom:w:main.eep.hex:i
 
 fuses:
@@ -116,6 +144,27 @@ fuses:
 
 avrdude:
 	avrdude -c ${ISP} -p ${TARGET} -P ${PORT} -v
+
+# Test targets for different configurations
+test-atmega8:
+	$(MAKE) clean
+	$(MAKE) TARGET=atmega8 main.hex
+
+test-atmega32u4:
+	$(MAKE) clean
+	$(MAKE) TARGET=atmega32u4 main.hex
+
+test-hiduart:
+	$(MAKE) clean
+	$(MAKE) TARGET=atmega32u4 HIDUART=1 main.hex
+
+test-tpi:
+	$(MAKE) clean
+	$(MAKE) TARGET=atmega32u4 TPI=1 main.hex
+
+test-all-features:
+	$(MAKE) clean
+	$(MAKE) TARGET=atmega32u4 TPI=1 HIDUART=1 main.hex
 
 # Fuse atmega8 high byte HFUSE:
 # 0xc9 = 1 1 0 0   1 0 0 1 <-- BOOTRST (boot reset vector at 0x0000)

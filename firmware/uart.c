@@ -13,7 +13,9 @@
 #include <avr/interrupt.h>
 #include <util/atomic.h>
 
+#ifndef USE_LUFA
 #include "usbdrv.h"
+#endif
 #include "usbasp.h"
 #include "uart.h"
 #include "cbuf.h"
@@ -28,7 +30,10 @@ void __vector_usart_rxc_wrapped(){
     }
 }
 
-#if (defined __AVR_ATmega8__) || (defined __AVR_ATmega8A__)
+#ifdef USE_LUFA
+/* ATmega32U4 interrupt vector */
+ISR(USART1_RX_vect, ISR_NAKED){
+#elif (defined __AVR_ATmega8__) || (defined __AVR_ATmega8A__)
 ISR(USART_RXC_vect, ISR_NAKED){
 #elif (defined __AVR_ATmega88__) || (defined __AVR_ATmega88PA__)
 ISR(USART_RX_vect, ISR_NAKED){
@@ -54,7 +59,11 @@ void __vector_usart_udre_wrapped(){
 }
 
 
+#ifdef USE_LUFA
+ISR(USART1_UDRE_vect, ISR_NAKED){
+#else
 ISR(USART_UDRE_vect, ISR_NAKED){
+#endif
   __asm__ volatile(
     "rjmp __vector_usart_udre_wrapped    \n"
     ::
@@ -72,9 +81,11 @@ uchar uart_disable(){
     CBUF_Init(tx_Q);
     CBUF_Init(rx_Q);
 
+#ifndef USE_LUFA
     if(usbAllRequestsAreDisabled()){
         usbEnableAllRequests();
     }
+#endif
 
     return UART_STATE_DISABLED;
 

@@ -27,9 +27,12 @@
 #include "usb_interface.h"
 #include "usbasp_debug.h"
 
+/* Include USB stack headers for constants */
+#ifndef USE_LUFA
 #include "oddebug.h"
 #include "usbdrv.h"
 #include "usb_descriptors.h"
+#endif
 
 #ifdef __TPI__
 #include "tpi.h"
@@ -41,8 +44,6 @@
 #include "serialnumber.h"
 #endif
 
-/* USB interface pointer - defined in usb_interface.c */
-extern const usb_interface_t *usb_interface;
 
 /* Clock capabilities based on F_CPU */
 #if F_CPU == 12000000L
@@ -56,7 +57,7 @@ extern const usb_interface_t *usb_interface;
     #define CAP_CLOCK USBASP_CAP_20MHZ_CLOCK
 #endif
 
-static uchar featureReport[8] = {
+uchar featureReport[8] = {
     0,                                             /* Prescaler Low byte */
     0,                                             /* Prescaler High byte */
     0,                                             /* Bitmask Parity, StopBit and DataBit */
@@ -74,7 +75,7 @@ static uchar featureReport[8] = {
     0                                              /* Reserved            */
   };
 
-static uchar replyBuffer[8];
+uchar replyBuffer[8];
 #ifdef __HIDUART__
 static uchar interruptBuffer[8];
 static uchar uart_state = UART_STATE_DISABLED;
@@ -104,25 +105,16 @@ static uchar prog_pagecounter;
 
 */
 
+/* Windows compatibility descriptors */
 usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq) {
+    /* This function is called by V-USB for BOS descriptors */
+    /* LUFA handles descriptors differently in its event handlers */
+    (void)rq;
+    return 0;
+}
 
-    DBG1(0xFD, (uchar *)rq, sizeof(usbRequest_t));
-
-    usbMsgLen_t len = 0;
-
-    /* BOS Descriptor */
-    if((rq->wValue.bytes[1] == USBDESCR_BOS) && (rq->wValue.bytes[0] == 0x00)) {
-        usbMsgPtr = (usbMsgPtr_t)&BOS_DESCRIPTOR;
-        len = sizeof(BOS_DESCRIPTOR);
-    }
-
-    return len;
-};
-
+/* Main USB setup handler - called by both VUSB and LUFA implementations */
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
-
-    DBG1(0xF1, data, 8);
-
     usbMsgLen_t len = 0;
 
     /* Device Requests */
@@ -287,16 +279,11 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
                  len = 4;
 
             /*  Handle the BOS request associated with the MS Vendor Code
-                we replied earlier in the BOS Descriptor request. See usbFunctionDescriptor. */
+                we replied earlier in the BOS Descriptor request. */
             } else if((data[1] == VENDOR_CODE) &&
                     (data[4] == MS_OS_2_0_DESCRIPTOR_INDEX)) {
-        
-                        usbMsgFlags = USB_FLG_MSGPTR_IS_ROM;
-                        usbMsgPtr = (usbMsgPtr_t)&MS_2_0_OS_DESCRIPTOR_SET;
-                        len = sizeof(MS_2_0_OS_DESCRIPTOR_SET);
-                        goto dontAssMsgPtr;
-
-                    }
+                len = 0; /* Implementation-specific handling */
+            }
             
         }
 
@@ -310,10 +297,8 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
                 case 3 : // Feature Report
                     switch(data[1]) {
                         case USBRQ_HID_GET_REPORT:
-
-                            usbMsgPtr = (usbMsgPtr_t)&featureReport;
                             len = sizeof(featureReport);
-                            goto dontAssMsgPtr;
+                            break;
 
                         case USBRQ_HID_SET_REPORT:
 
@@ -334,17 +319,10 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
         }
     }
 
-    usbMsgPtr = (usbMsgPtr_t)&replyBuffer;
-
-dontAssMsgPtr:
-
     return len;
 }
 
 uchar usbFunctionRead(uchar *data, uchar len) {
-
-    DBG1(0xF2, data, len);
-
     uchar i;
 
     /* check if programmer is in correct read state */
@@ -391,9 +369,6 @@ uchar usbFunctionRead(uchar *data, uchar len) {
 }
 
 uchar usbFunctionWrite(uchar *data, uchar len) {
-
-    DBG1(0xF3, data, len);
-    
     uchar retVal = 0;
     uchar i;
 
@@ -574,7 +549,9 @@ void usbFunctionWriteOut(uchar *data, uchar len){
          /* If the transmit buffer is near full, disable usb requests
             until the transmit buffer is empty. */
             if((CBUF_Len(tx_Q)) + len > (tx_Q_SIZE - 8)) {
+#ifndef USE_LUFA
                 usbDisableAllRequests();
+#endif
             }
                                    
             do{
@@ -666,8 +643,12 @@ int main(void) {
     /* USBasp active */
     ledGreenOn();
 
-    /* Initialize the USB implementation */
+    /* Initialize the appropriate USB implementation */
+#ifdef USE_LUFA
+    usb_register_lufa_interface();
+#else
     usb_register_vusb_interface();
+#endif
 
     /* Initialize USB */
     usb_init();
@@ -686,9 +667,11 @@ int main(void) {
         /*  Reenable USB requests if they are 
             disabled and tx buffer is empty. */
         } else if(CBUF_IsEmpty(tx_Q)) {
+#ifndef USE_LUFA
             if(usbAllRequestsAreDisabled()){
                 usbEnableAllRequests();
             }
+#endif
         }
 #endif    
         /* Handle USB tasks */

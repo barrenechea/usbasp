@@ -98,5 +98,6 @@ static inline void usb_send_interrupt3(uchar *data, uchar len) {
 
 /* Implementation registration functions - called by VUSB/LUFA modules */
 void usb_register_vusb_interface(void);
+void usb_register_lufa_interface(void);
 
 #endif /* USB_INTERFACE_H_ */

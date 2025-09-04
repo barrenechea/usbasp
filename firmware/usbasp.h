@@ -13,6 +13,11 @@
 #ifndef USBASP_H_
 #define USBASP_H_
 
+/* Ensure uchar is defined for both V-USB and LUFA builds */
+#ifndef uchar
+#define uchar unsigned char
+#endif
+
 /* USB function call identifiers */
 // ISP:
 #define USBASP_FUNC_CONNECT             1
@@ -62,6 +67,64 @@
 #define UART_STATE_ENABLED              16
 #define UART_STATE_DISABLED             0
 
+/* Only prog_sck needs to be global for ISP functions */
+extern uchar prog_sck;
+
+/* USB function declarations - shared by V-USB and LUFA */
+#ifdef USE_LUFA
+/* LUFA needs access to these functions */
+typedef unsigned int usbMsgLen_t;
+struct usbRequest {
+    uchar bmRequestType;
+    uchar bRequest;
+    union {
+        unsigned int word;
+        uchar bytes[2];
+    } wValue, wIndex, wLength;
+};
+
+/* V-USB constants needed by main.c functions */
+#define USBRQ_TYPE_MASK         0x60
+#define USBRQ_TYPE_VENDOR       0x40
+#define USBRQ_TYPE_CLASS        0x20
+#define USBRQ_RCPT_MASK         0x1f
+#define USBRQ_RCPT_DEVICE       0x00
+#define USBRQ_RCPT_INTERFACE    0x01
+#define USBRQ_HID_GET_REPORT    0x01
+#define USBRQ_HID_SET_REPORT    0x09
+#define USB_NO_MSG              0xff
+#define USBDESCR_BOS            0x0f
+
+/* Function declarations */
+usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq);
+usbMsgLen_t usbFunctionSetup(uchar data[8]);
+uchar usbFunctionRead(uchar *data, uchar len);
+uchar usbFunctionWrite(uchar *data, uchar len);
+void usbFunctionWriteOut(uchar *data, uchar len);
+
+/* Variables that main.c functions need - LUFA will provide these */
+extern uchar featureReport[8];
+extern uchar replyBuffer[8];
+
+/* Vendor constants for Windows compatibility */
+#define VENDOR_CODE 0x5D
+#define MS_OS_2_0_DESCRIPTOR_INDEX 0x07
+extern const uchar MS_2_0_OS_DESCRIPTOR_SET[];
+extern const uchar BOS_DESCRIPTOR[];
+
+/* Descriptor sizes - LUFA needs these */
+#define BOS_DESCRIPTOR_SIZE 33
+#define MS_2_0_OS_DESCRIPTOR_SET_SIZE 173
+
+/* V-USB interrupt functions - LUFA provides stubs */
+void usbSetInterrupt(uchar *data, uchar len);
+void usbSetInterrupt3(uchar *data, uchar len);
+
+/* HID endpoint functions from main.c */
+void HID_EP_1_IN(void);
+void HID_EP_3_IN(void);
+#endif
+
 /* Block mode flags */
 #define PROG_BLOCKFLAG_FIRST            1
 #define PROG_BLOCKFLAG_LAST             2
@@ -101,9 +164,19 @@
 
 /* macros for gpio functions */
 /* LEDs are active low */
+#ifdef USE_LUFA
+/* Arduino Micro LED definitions - LEDs are ACTIVE LOW */
+/* RX LED (red) on PB0, TX LED (red) on PD5 */
+#define ledRedOff()                     PORTB |= (1 << PB0); DDRB |= (1 << PB0)   // HIGH = OFF
+#define ledRedOn()                      PORTB &= ~(1 << PB0); DDRB |= (1 << PB0)  // LOW = ON
+#define ledGreenOff()                   PORTD |= (1 << PD5); DDRD |= (1 << PD5)   // HIGH = OFF  
+#define ledGreenOn()                    PORTD &= ~(1 << PD5); DDRD |= (1 << PD5)  // LOW = ON
+#else
+/* Legacy targets - original pins */
 #define ledRedOff()                     DDRC &= ~(1 << PC1)
 #define ledRedOn()                      DDRC |= (1 << PC1)
 #define ledGreenOff()                   DDRC &= ~(1 << PC0)
 #define ledGreenOn()                    DDRC |= (1 << PC0)
+#endif
 
 #endif /* USBASP_H_ */
