@@ -53,8 +53,12 @@ BASE_OBJECTS = isp.o clock.o
 # USB abstraction layer objects
 USB_INTERFACE_OBJECTS = usb_interface.o
 
-# USB implementation specific objects
-USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
+# USB implementation specific objects  
+ifeq ($(USE_LUFA),1)
+  USB_IMPL_OBJECTS = usb_lufa_impl.o usb_descriptors_lufa.o $(LUFA_SRC_USB:.c=.o) usbasp_debug_lufa.o
+else
+  USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o usbasp_debug_vusb.o
+endif
 
 # Modular architecture objects
 OBJECTS = $(BASE_OBJECTS) $(USB_INTERFACE_OBJECTS) $(USB_IMPL_OBJECTS) main.o

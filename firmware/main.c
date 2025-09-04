@@ -25,6 +25,7 @@
 #include "isp.h"
 #include "clock.h"
 #include "usb_interface.h"
+#include "usbasp_debug.h"
 
 #include "oddebug.h"
 #include "usbdrv.h"
@@ -651,7 +652,7 @@ void HID_EP_3_IN(){
 int main(void) {
 
     /* enable debug if DEBUG_LEVEL > 0 */
-    odDebugInit();
+    usbasp_debug_init();
 
     /* init timer */
     clockInit();
