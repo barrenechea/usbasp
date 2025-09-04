@@ -19,7 +19,9 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
+#include <avr/eeprom.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "usbasp.h"
 #include "isp.h"
@@ -107,14 +109,31 @@ static uchar prog_pagecounter;
 
 /* Windows compatibility descriptors */
 usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq) {
-    /* This function is called by V-USB for BOS descriptors */
-    /* LUFA handles descriptors differently in its event handlers */
-    (void)rq;
-    return 0;
-}
+
+    DBG1(0xFD, (uchar *)rq, sizeof(usbRequest_t));
+
+    usbMsgLen_t len = 0;
+
+    /* BOS Descriptor */
+    if((rq->wValue.bytes[1] == USBDESCR_BOS) && (rq->wValue.bytes[0] == 0x00)) {
+#ifndef USE_LUFA
+        usbMsgPtr = (usbMsgPtr_t)&BOS_DESCRIPTOR;
+#endif
+#ifdef USE_LUFA
+        len = BOS_DESCRIPTOR_SIZE;
+#else
+        len = sizeof(BOS_DESCRIPTOR);
+#endif
+    }
+
+    return len;
+};
 
 /* Main USB setup handler - called by both VUSB and LUFA implementations */
 usbMsgLen_t usbFunctionSetup(uchar data[8]) {
+
+    DBG1(0xF1, data, 8);
+
     usbMsgLen_t len = 0;
 
     /* Device Requests */
@@ -279,11 +298,21 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
                  len = 4;
 
             /*  Handle the BOS request associated with the MS Vendor Code
-                we replied earlier in the BOS Descriptor request. */
+                we replied earlier in the BOS Descriptor request. See usbFunctionDescriptor. */
             } else if((data[1] == VENDOR_CODE) &&
                     (data[4] == MS_OS_2_0_DESCRIPTOR_INDEX)) {
-                len = 0; /* Implementation-specific handling */
-            }
+        
+#ifndef USE_LUFA
+                        usbMsgFlags = USB_FLG_MSGPTR_IS_ROM;
+                        usbMsgPtr = (usbMsgPtr_t)&MS_2_0_OS_DESCRIPTOR_SET;
+                        goto dontAssMsgPtr;
+                        len = sizeof(MS_2_0_OS_DESCRIPTOR_SET);
+#endif
+#ifdef USE_LUFA
+                        len = 0;
+#endif
+
+                    }
             
         }
 
@@ -297,7 +326,15 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
                 case 3 : // Feature Report
                     switch(data[1]) {
                         case USBRQ_HID_GET_REPORT:
+#ifdef USE_LUFA
+                        {
+                            memcpy(replyBuffer, featureReport, sizeof(featureReport));
                             len = sizeof(featureReport);
+                        }
+#else
+                            usbMsgPtr = (usbMsgPtr_t)&featureReport;
+                            goto dontAssMsgPtr;
+#endif
                             break;
 
                         case USBRQ_HID_SET_REPORT:
@@ -319,10 +356,19 @@ usbMsgLen_t usbFunctionSetup(uchar data[8]) {
         }
     }
 
+#ifndef USE_LUFA
+    usbMsgPtr = (usbMsgPtr_t)&replyBuffer;
+
+dontAssMsgPtr:
+#endif
+
     return len;
 }
 
 uchar usbFunctionRead(uchar *data, uchar len) {
+
+    DBG1(0xF2, data, len);
+
     uchar i;
 
     /* check if programmer is in correct read state */
@@ -369,6 +415,9 @@ uchar usbFunctionRead(uchar *data, uchar len) {
 }
 
 uchar usbFunctionWrite(uchar *data, uchar len) {
+
+    DBG1(0xF3, data, len);
+    
     uchar retVal = 0;
     uchar i;
 
@@ -445,7 +494,7 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
     if(prog_state == PROG_STATE_SET_REPORT) 
     {
 
-        switch (data[3]) {
+        switch (data[4]) {
             case 0: {                                             
 
     /*  The first 2 bytes are the uart prescaler ( low byte first then high byte second ) 

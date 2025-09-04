@@ -44,7 +44,10 @@
 #define MS_OS_20_REG_PROPERTY_REG_LINK                 0x06, 0x00
 #define MS_OS_20_REG_PROPERTY_REG_MULTI_SZ             0x07, 0x00
 
+/* Serial number descriptor defined in implementation-specific files */
+#ifdef USE_VUSB
 const int EEMEM usbDescriptorStringSerialNumber[] = {USB_STRING_DESCRIPTOR_HEADER(4), '0', '0', '0', '0'};
+#endif
 
 /* USB device descriptor */
 PROGMEM const char usbDescriptorDevice[] = {

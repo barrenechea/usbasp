@@ -71,7 +71,7 @@ ifeq ($(USE_LUFA),1)
   OPTIMIZATION = s
   include $(LUFA_PATH)/Build/LUFA/lufa-sources.mk
 else
-  COMPILE += -DUSE_VUSB -Iusbdrv
+  COMPILE += -DUSE_VUSB -Ivusb/usbdrv
 endif
 
 # Base objects (core functionality)
@@ -84,7 +84,7 @@ USB_INTERFACE_OBJECTS = usb_interface.o
 ifeq ($(USE_LUFA),1)
   USB_IMPL_OBJECTS = usb_lufa_impl.o usb_descriptors_lufa.o $(LUFA_SRC_USB:.c=.o)
 else
-  USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
+  USB_IMPL_OBJECTS = usb_vusb.o vusb/usbdrv/usbdrv.o vusb/usbdrv/usbdrvasm.o vusb/usbdrv/oddebug.o usbasp_debug_vusb.o
 endif
 
 # Modular architecture objects (now uses main.o directly)
@@ -116,7 +116,7 @@ endif
 	$(COMPILE) -S $< -o $@
 
 clean:
-	rm -f main.hex main.lst main.obj main.cof main.list main.map main.eep.hex main.bin *.o main.s usbdrv/*.o
+	rm -f main.hex main.lst main.obj main.cof main.list main.map main.eep.hex main.bin *.o main.s vusb/usbdrv/*.o
 
 # Build targets
 main.bin: $(MODULAR_OBJECTS)
