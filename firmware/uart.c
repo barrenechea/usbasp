@@ -39,7 +39,7 @@ void __vector_usart_rxc_wrapped(){
 ISR(USART1_RX_vect, ISR_NAKED){
 #elif (defined __AVR_ATmega8__) || (defined __AVR_ATmega8A__)
 ISR(USART_RXC_vect, ISR_NAKED){
-#elif (defined __AVR_ATmega88__) || (defined __AVR_ATmega88PA__)
+#elif (defined __AVR_ATmega48__) || (defined __AVR_ATmega48PA__) || (defined __AVR_ATmega88__) || (defined __AVR_ATmega88PA__)
 ISR(USART_RX_vect, ISR_NAKED){
 #endif    
     __asm__ volatile(
