@@ -19,13 +19,16 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
+#include <stddef.h>
 
-#include "oddebug.h"
 #include "usbasp.h"
-#include "usbdrv.h"
-#include "usb_descriptors.h"
 #include "isp.h"
 #include "clock.h"
+#include "usb_interface.h"
+
+#include "oddebug.h"
+#include "usbdrv.h"
+#include "usb_descriptors.h"
 
 #ifdef __TPI__
 #include "tpi.h"
@@ -37,7 +40,10 @@
 #include "serialnumber.h"
 #endif
 
+/* USB interface pointer - defined in usb_interface.c */
+extern const usb_interface_t *usb_interface;
 
+/* Clock capabilities based on F_CPU */
 #if F_CPU == 12000000L
     #define CAP_CLOCK USBASP_CAP_12MHZ_CLOCK
 #elif F_CPU == 16000000L
@@ -620,7 +626,8 @@ void HID_EP_1_IN(){
         }
     }
 
-    usbSetInterrupt(interruptBuffer, sizeof(interruptBuffer));
+    /* Send interrupt through the abstraction layer */
+    usb_send_interrupt(interruptBuffer, sizeof(interruptBuffer));
 }
 
 /* Device to host. Endpoint 2 Input */
@@ -635,7 +642,8 @@ void HID_EP_3_IN(){
     // monitorBuffer[6] = 0;
     monitorBuffer[7] = prog_state | uart_state;
  
-    usbSetInterrupt3(monitorBuffer, sizeof(monitorBuffer));
+    /* Send interrupt through the abstraction layer */
+    usb_send_interrupt3(monitorBuffer, sizeof(monitorBuffer));
 }
 
 #endif
@@ -657,8 +665,11 @@ int main(void) {
     /* USBasp active */
     ledGreenOn();
 
-    /* main event loop */
-    usbInit();
+    /* Initialize the USB implementation */
+    usb_register_vusb_interface();
+
+    /* Initialize USB */
+    usb_init();
 
     sei();
     for (;;) {
@@ -679,14 +690,15 @@ int main(void) {
             }
         }
 #endif    
-        usbPoll();
+        /* Handle USB tasks */
+        usb_task();
 
 #ifdef __HIDUART__        
-        if (usbInterruptIsReady()) {
+        if (usb_interrupt_ready()) {
             HID_EP_1_IN();
         }
-
-        if (usbInterruptIsReady3()) {
+        
+        if (usb_interrupt3_ready()) {
             HID_EP_3_IN();
         }
 #endif

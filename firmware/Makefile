@@ -41,9 +41,23 @@ help:
 	@echo "       ISP=${ISP}"
 	@echo "       PORT=${PORT}"
 
-COMPILE = avr-gcc -Wall -Wextra -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Os -Iusbdrv -I. -mmcu=$(TARGET) -DF_CPU=$(CLOCK) # -DDEBUG_LEVEL=1
+# Base compile flags
+COMPILE = avr-gcc -Wall -Wextra -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Os -I. -mmcu=$(TARGET) -DF_CPU=$(CLOCK) # -DDEBUG_LEVEL=1
 
-OBJECTS = usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o isp.o clock.o main.o
+# Add VUSB-specific flags
+COMPILE += -DUSE_VUSB -Iusbdrv
+
+# Base objects (core functionality)
+BASE_OBJECTS = isp.o clock.o
+
+# USB abstraction layer objects
+USB_INTERFACE_OBJECTS = usb_interface.o
+
+# USB implementation specific objects
+USB_IMPL_OBJECTS = usb_vusb.o usbdrv/usbdrv.o usbdrv/usbdrvasm.o usbdrv/oddebug.o
+
+# Modular architecture objects
+OBJECTS = $(BASE_OBJECTS) $(USB_INTERFACE_OBJECTS) $(USB_IMPL_OBJECTS) main.o
 
 ifneq ($(TPI),)
 COMPILE += -D__TPI__
