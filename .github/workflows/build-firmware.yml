@@ -1,0 +1,80 @@
+name: Build USBasp Firmware
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-firmware:
+    name: Build firmware for ${{ matrix.target }} (${{ matrix.suffix }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ATmega8 builds (VUSB)
+          - target: atmega8
+            features: ""
+            suffix: "basic"
+          - target: atmega8
+            features: "TPI=1"
+            suffix: "tpi"
+          - target: atmega8
+            features: "HIDUART=1"
+            suffix: "hiduart"
+          - target: atmega8
+            features: "TPI=1 HIDUART=1"
+            suffix: "tpi-hiduart"
+
+          # Atmega48 builds (VUSB)
+          - target: atmega48
+            features: ""
+            suffix: "basic"
+          - target: atmega48
+            features: "TPI=1"
+            suffix: "tpi"
+          - target: atmega48
+            features: "HIDUART=1"
+            suffix: "hiduart"
+          - target: atmega48
+            features: "TPI=1 HIDUART=1"
+            suffix: "tpi-hiduart"
+          
+          # ATmega88 builds (VUSB)
+          - target: atmega88
+            features: ""
+            suffix: "basic"
+          - target: atmega88
+            features: "TPI=1"
+            suffix: "tpi"
+          - target: atmega88
+            features: "HIDUART=1"
+            suffix: "hiduart"
+          - target: atmega88
+            features: "TPI=1 HIDUART=1"
+            suffix: "tpi-hiduart"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install AVR toolchain
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install gcc-avr binutils-avr avr-libc avrdude
+
+      - name: Build firmware for ${{ matrix.target }} (${{ matrix.suffix }})
+        working-directory: firmware
+        run: |
+          make TARGET=${{ matrix.target }} ${{ matrix.features }} main.hex
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbasp-firmware-${{ matrix.target }}-${{ matrix.suffix }}
+          path: |
+            firmware/main.hex
+            firmware/main.eep.hex
