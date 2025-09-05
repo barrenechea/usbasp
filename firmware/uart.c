@@ -26,7 +26,7 @@ volatile tx_Q_t tx_Q;
 
 volatile uint8_t dataByte;
 
-void __vector_usart_rxc_wrapped() __attribute__ ((signal));
+void __vector_usart_rxc_wrapped() __attribute__ ((signal, used, noinline));
 void __vector_usart_rxc_wrapped(){
     if (!CBUF_IsFull(rx_Q)){
       *CBUF_GetPushEntryPtr(rx_Q) = dataByte;
@@ -50,7 +50,7 @@ ISR(USART_RX_vect, ISR_NAKED){
     );
 }
 
-void __vector_usart_udre_wrapped() __attribute__ ((signal));
+void __vector_usart_udre_wrapped() __attribute__ ((signal, used, noinline));
 void __vector_usart_udre_wrapped(){
     
     if(!CBUF_IsEmpty(tx_Q)){

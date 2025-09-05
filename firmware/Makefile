@@ -59,8 +59,8 @@ help:
 	@echo "       PORT=${PORT}"
 	@echo "       USE_LUFA=$(USE_LUFA)"
 
-# Base compile flags
-COMPILE = avr-gcc -Wall -Wextra -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Os -I. -mmcu=$(TARGET) -DF_CPU=$(CLOCK) # -DDEBUG_LEVEL=1
+# Base compile flags with advanced size optimization
+COMPILE = avr-gcc -Wall -Wextra -fno-move-loop-invariants -fno-tree-scev-cprop -fno-inline-small-functions -Os -ffunction-sections -fdata-sections -flto -mrelax -maccumulate-args -I. -mmcu=$(TARGET) -DF_CPU=$(CLOCK)
 
 # Add USB library specific flags
 ifeq ($(USE_LUFA),1)
@@ -120,7 +120,7 @@ clean:
 
 # Build targets
 main.bin: $(MODULAR_OBJECTS)
-	$(COMPILE) -o main.bin $(MODULAR_OBJECTS) -Wl,-Map,main.map
+	$(COMPILE) -o main.bin $(MODULAR_OBJECTS) -Wl,-Map,main.map -Wl,--gc-sections -Wl,--relax -flto
 
 main.hex:	main.bin
 	rm -f main.hex main.eep.hex
