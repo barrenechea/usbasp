@@ -18,6 +18,10 @@
 #endif
 #include "usbasp.h"
 #include "uart.h"
+
+/* UART queue definitions */
+volatile rx_Q_t rx_Q;
+volatile tx_Q_t tx_Q;
 #include "cbuf.h"
 
 volatile uint8_t dataByte;

@@ -5,10 +5,160 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  VERSION_BINUTILS: "2.44"
+  VERSION_GCC: "14.2.0"
+  VERSION_LIBC_REF: "avr-libc-2_2_1-release"
+
 jobs:
+  build-avr-toolchain:
+    name: Build AVR cross-compiler toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache AVR toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: avr-gcc.tar.bz2
+          key: avr-gcc-${{ env.VERSION_GCC }}-${{ runner.arch }}-${{ runner.os }}
+
+      - name: Install dependencies
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq dist-upgrade
+          sudo apt-get install -qq git wget autoconf build-essential netpbm libmpc-dev libmpfr-dev libgmp-dev libmpfr6 texinfo doxygen flex bison libexpat1-dev
+
+      - name: Download GCC ${{ env.VERSION_GCC }} sources
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          # Set build variables
+          SRC="src"
+          INSTALL="/opt/avr-gcc"
+          mkdir -p ${SRC} ${INSTALL}
+          root=$(pwd)
+          cores=$(nproc)
+
+          echo "Downloading GCC ${{ env.VERSION_GCC }} and binutils ${{ env.VERSION_BINUTILS }} sources"
+
+          function download_and_extract() {
+            local file="$1"
+            local url="$2"
+            local extract_cmd="$3"
+            
+            if [ ! -f "$file" ]; then
+              echo "Downloading $file..."
+              wget -c -q "$url" || return 1
+            fi
+            
+            echo "Extracting $file..."
+            $extract_cmd "$file" -C ${SRC} || return 1
+            rm "$file"
+            return 0
+          }
+
+          # Download patches
+          echo "Downloading patches..."
+          wget -q -c --tries=3 "https://raw.githubusercontent.com/archlinux/svntogit-community/c3efadcb76f4d8b1a3784015e7c472f59dbfa7de/avr-binutils/repos/community-x86_64/avr-size.patch" || { echo "Failed to download avr-size.patch"; exit 1; }
+          wget -q -c --tries=3 "https://raw.githubusercontent.com/osx-cross/homebrew-avr/d2e2566b06b90355952ed996707a0a1a24673cd3/Patch/avr-libc-add-mcu-atmega168pb.patch" || { echo "Failed to download avr-libc patch"; exit 1; }
+
+          # Download and extract sources using more reliable sourceware.org mirrors
+          download_and_extract "binutils-${{ env.VERSION_BINUTILS }}.tar.xz" \
+            "https://sourceware.org/pub/binutils/releases/binutils-${{ env.VERSION_BINUTILS }}.tar.xz" \
+            "tar -xJf" || { echo "Failed to download/extract binutils"; exit 1; }
+
+          download_and_extract "gcc-${{ env.VERSION_GCC }}.tar.xz" \
+            "https://sourceware.org/pub/gcc/releases/gcc-${{ env.VERSION_GCC }}/gcc-${{ env.VERSION_GCC }}.tar.xz" \
+            "tar -xJf" || { echo "Failed to download/extract GCC"; exit 1; }
+
+          echo "All sources downloaded and extracted successfully"
+
+      - name: Checkout avr-libc ${{ env.VERSION_LIBC_REF }}
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: avrdudes/avr-libc
+          ref: ${{ env.VERSION_LIBC_REF }}
+          path: src/avr-libc
+          fetch-depth: 1
+
+      - name: Build binutils ${{ env.VERSION_BINUTILS }}
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          cd src/binutils-${{ env.VERSION_BINUTILS }}
+          patch -g 0 -f -p1 -s -i ../../avr-size.patch
+          mkdir build && cd build
+          ../configure --target=avr --prefix=/opt/avr-gcc/ --disable-nls --disable-werror --quiet
+          make -j$(nproc) -s
+          make -s install
+
+      - name: Build GCC ${{ env.VERSION_GCC }}
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          export PATH="/opt/avr-gcc/bin:$PATH"
+          cd src/gcc-${{ env.VERSION_GCC }}
+          mkdir build && cd build
+          ../configure \
+                  --target=avr \
+                  --prefix=/opt/avr-gcc/ \
+                  --with-ld=/opt/avr-gcc/bin/avr-ld \
+                  --with-as=/opt/avr-gcc/bin/avr-as \
+                  --libdir=/opt/avr-gcc/avr/lib \
+                  --enable-languages=c,c++ \
+                  --disable-nls \
+                  --disable-libssp \
+                  --disable-shared \
+                  --disable-threads \
+                  --disable-libgomp \
+                  --with-dwarf2 \
+                  --with-avrlibc \
+                  --disable-bootstrap \
+                  --quiet
+          make -j$(nproc) -s
+          make -s install
+
+      - name: Build avr-libc ${{ env.VERSION_LIBC_REF }}
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          # Add AVR cross-compiler to PATH
+          export PATH="/opt/avr-gcc/bin:$PATH"
+
+          cd src/avr-libc
+
+          # Apply ATmega168PB patch (ignore failures, like the reference script)
+          echo "Applying ATmega168PB compatibility patch..."
+          patch -g 0 -f -p1 -i ../../avr-libc-add-mcu-atmega168pb.patch || echo "Patch failed, continuing (ATmega168PB may be natively supported)"
+
+          # Generate build files if needed
+          if [ ! -f "./configure" ]; then
+            echo "Generating configure script..."
+            ./bootstrap
+          fi
+
+          build=$(./config.guess)
+          ./configure --build=${build} --prefix=/opt/avr-gcc --host=avr --quiet
+          make -s -j$(nproc) install
+
+      - name: Cleanup build files
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          rm -rf src *.patch
+
+      - name: Create toolchain tarball
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          tar cjf avr-gcc.tar.bz2 -C /opt avr-gcc
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avr-gcc-toolchain-${{ runner.arch }}
+          path: avr-gcc.tar.bz2
+
   build-firmware:
     name: Build firmware for ${{ matrix.target }} (${{ matrix.suffix }})
     runs-on: ubuntu-latest
+    needs: build-avr-toolchain
 
     strategy:
       fail-fast: false
@@ -41,7 +191,7 @@ jobs:
           - target: atmega48
             features: "TPI=1 HIDUART=1"
             suffix: "tpi-hiduart"
-          
+
           # ATmega88 builds (VUSB)
           - target: atmega88
             features: ""
@@ -56,20 +206,69 @@ jobs:
             features: "TPI=1 HIDUART=1"
             suffix: "tpi-hiduart"
 
+          # ATmega32U4 builds (LUFA)
+          - target: atmega32u4
+            features: ""
+            suffix: "basic"
+          - target: atmega32u4
+            features: "TPI=1"
+            suffix: "tpi"
+          - target: atmega32u4
+            features: "HIDUART=1"
+            suffix: "hiduart"
+          - target: atmega32u4
+            features: "TPI=1 HIDUART=1"
+            suffix: "tpi-hiduart"
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
 
-      - name: Install AVR toolchain
+      - name: Download AVR cross-compiler toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: avr-gcc-toolchain-${{ runner.arch }}
+
+      - name: Install AVR cross-compiler toolchain
         run: |
+          # Extract AVR cross-compiler toolchain
+          sudo tar -xjf avr-gcc.tar.bz2 -C /opt
+
+          # Install avrdude from system (it's recent enough)
           sudo apt-get -qq update
-          sudo apt-get -qq install gcc-avr binutils-avr avr-libc avrdude
+          sudo apt-get -qq install avrdude
+
+          # Add to PATH
+          echo "/opt/avr-gcc/bin" >> $GITHUB_PATH
+
+      - name: Log AVR cross-compiler toolchain versions
+        run: |
+          echo "=== AVR Cross-Compiler Toolchain Version Information ==="
+          /opt/avr-gcc/bin/avr-gcc --version
+          echo "---"
+          /opt/avr-gcc/bin/avr-objcopy --version | head -3
+          echo "---" 
+          /opt/avr-gcc/bin/avr-size --version | head -3
+          echo "---"
+          avrdude -? 2>&1 | head -3 || true
+          echo "=== End Toolchain Info ==="
 
       - name: Build firmware for ${{ matrix.target }} (${{ matrix.suffix }})
         working-directory: firmware
         run: |
+          echo "Building firmware for target: ${{ matrix.target }} with features: ${{ matrix.features }}"
           make TARGET=${{ matrix.target }} ${{ matrix.features }} main.hex
+          echo "=== Build completed, checking binary size ==="
+          if [ -f main.bin ]; then
+            avr-size main.bin
+          elif [ -f main.elf ]; then
+            avr-size main.elf
+          else
+            echo "No binary file found to check size"
+            ls -la main.*
+          fi
+          echo "=== End size check ==="
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4

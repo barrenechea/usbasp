@@ -81,19 +81,22 @@
 #define rx_Q_SIZE   128
 #define tx_Q_SIZE   128
 
-volatile struct
+typedef struct
 {
     uint8_t m_getIdx;
     uint8_t m_putIdx;
     uint8_t m_entry[rx_Q_SIZE];
-} rx_Q;
+} rx_Q_t;
 
-volatile struct
+typedef struct
 {
     uint8_t m_getIdx;
     uint8_t m_putIdx;
     uint8_t m_entry[tx_Q_SIZE];
-} tx_Q;
+} tx_Q_t;
+
+extern volatile rx_Q_t rx_Q;
+extern volatile tx_Q_t tx_Q;
 
 uchar uart_config(uchar *cfgData);
 uchar uart_disable();

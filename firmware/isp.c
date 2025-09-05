@@ -18,6 +18,9 @@
 uchar sck_sw_delay;
 uchar isp_hiaddr;
 
+/* pointer to sw or hw transmit function - definition */
+uchar (*ispTransmit)(uchar);
+
 static inline void spiHWenable() {
     /* enable SPI, master */
     SPCR |= (1 << SPE) | (1 << MSTR);
