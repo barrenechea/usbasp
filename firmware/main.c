@@ -486,7 +486,12 @@ uchar usbFunctionWrite(uchar *data, uchar len) {
             case 1: {
                 
                     serialNumberWrite(data);
+                }
+                break;
+            case 0xFF: { /* Reset device using watchdog timer */
 
+                    wdt_enable(WDTO_15MS);
+                    while(1);  /* wait for watchdog reset */
 #endif
                
                 }
